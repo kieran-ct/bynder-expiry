@@ -9,12 +9,25 @@ const ALERT_WINDOW_DAYS = 7;
 const ORGANIC_KEY = 'Organic_expiry_date';
 const PAID_KEY = 'Paid_expiry_date';
 
-function isWithinWindow(dateStr) {
-  if (!dateStr) return false;
+function isWithinWindow(dateStr, label = '') {
+  if (!dateStr) {
+    console.log(`⛔️ ${label} expiry is missing or empty`);
+    return false;
+  }
+
+  const parsed = new Date(dateStr);
+  if (isNaN(parsed.getTime())) {
+    console.log(`⛔️ ${label} expiry "${dateStr}" could not be parsed as a valid date`);
+    return false;
+  }
+
   const now = new Date();
-  const expiry = new Date(dateStr);
   const cutoff = new Date(now.getTime() + ALERT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  return expiry > now && expiry <= cutoff;
+
+  const isWithin = parsed > now && parsed <= cutoff;
+  console.log(`📅 ${label} expiry "${dateStr}" → ${parsed.toISOString()} | within window: ${isWithin}`);
+
+  return isWithin;
 }
 console.log(`🚀 Starting expiry check at ${new Date().toISOString()}`);
 async function fetchAllAssets() {
@@ -76,13 +89,13 @@ async function runCheck() {
 
     const name = asset.mediaName || asset.originalFilename || asset.id;
 
-    if (isWithinWindow(organicExpiry)) {
+    if (isWithinWindow(organicExpiry, 'Organic')) {
       console.log(`📢 Organic expiry found for "${name}" on ${organicExpiry}`);
       await notifySlack(asset, 'organic', organicExpiry);
       notificationsSent++;
     }
 
-    if (isWithinWindow(paidExpiry)) {
+   if (isWithinWindow(paidExpiry, 'Paid')) {
       console.log(`📢 Paid expiry found for "${name}" on ${paidExpiry}`);
       await notifySlack(asset, 'paid', paidExpiry);
       notificationsSent++;
