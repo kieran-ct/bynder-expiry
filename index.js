@@ -17,17 +17,32 @@ function isWithinWindow(dateStr) {
   return expiry > now && expiry <= cutoff;
 }
 console.log(`🚀 Starting expiry check at ${new Date().toISOString()}`);
-async function fetchAssets() {
-  const res = await fetch(`${BYNDER_BASE_URL}/api/v4/media/`, {
-    headers: { Authorization: `Bearer ${BYNDER_TOKEN}` }
-  });
+async function fetchAllAssets() {
+  const perPage = 100; // max limit
+  let page = 1;
+  let all = [];
 
-  if (!res.ok) {
-    console.error('Error fetching assets:', res.status, await res.text());
-    return [];
+  while (true) {
+    const res = await fetch(`${BYNDER_BASE_URL}/api/v4/media/?page=${page}&limit=${perPage}`, {
+      headers: { Authorization: `Bearer ${BYNDER_TOKEN}` }
+    });
+
+    if (!res.ok) {
+      console.error(`Error on page ${page}:`, res.status, await res.text());
+      break;
+    }
+
+    const data = await res.json();
+    all = all.concat(data);
+
+    console.log(`📦 Page ${page}: fetched ${data.length} assets`);
+    if (data.length < perPage) break; // last page reached
+
+    page++;
   }
 
-  return res.json();
+  console.log(`✅ Total assets fetched: ${all.length}`);
+  return all;
 }
 
 async function notifySlack(asset, type, expiryDate) {
@@ -50,7 +65,7 @@ async function notifySlack(asset, type, expiryDate) {
 }
 
 async function runCheck() {
-  const assets = await fetchAssets();
+  const assets = await fetchAllAssets();
   console.log(`✅ Fetched ${assets.length} assets from Bynder`);
 
   let notificationsSent = 0;
