@@ -6,8 +6,10 @@ const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 const BYNDER_BASE_URL = process.env.BYNDER_BASE_URL;
 
 const ALERT_WINDOW_DAYS = 7;
-const ORGANIC_KEY = 'Organic_expiry_date';
-const PAID_KEY = 'Paid_expiry_date';
+
+// Metadata IDs for expiry fields
+const ORGANIC_EXPIRY_ID = '6375B2CD-C349-434D-8581770837D6214E';
+const PAID_EXPIRY_ID = '6C7C1AA3-17CC-41A3-9BA92788E9323FB9';
 
 function isWithinWindow(dateStr, label = '') {
   if (!dateStr) {
@@ -29,9 +31,11 @@ function isWithinWindow(dateStr, label = '') {
 
   return isWithin;
 }
+
 console.log(`🚀 Starting expiry check at ${new Date().toISOString()}`);
+
 async function fetchAllAssets() {
-  const perPage = 100; // max limit
+  const perPage = 100;
   let page = 1;
   let all = [];
 
@@ -41,7 +45,7 @@ async function fetchAllAssets() {
     });
 
     if (!res.ok) {
-      console.error(`Error on page ${page}:`, res.status, await res.text());
+      console.error(`❌ Error on page ${page}:`, res.status, await res.text());
       break;
     }
 
@@ -49,7 +53,7 @@ async function fetchAllAssets() {
     all = all.concat(data);
 
     console.log(`📦 Page ${page}: fetched ${data.length} assets`);
-    if (data.length < perPage) break; // last page reached
+    if (data.length < perPage) break;
 
     page++;
   }
@@ -73,8 +77,20 @@ async function notifySlack(asset, type, expiryDate) {
   });
 
   if (!res.ok) {
-    console.error('Slack webhook error:', res.status, await res.text());
+    console.error('❌ Slack webhook error:', res.status, await res.text());
   }
+}
+
+function getExpiryFromMetadata(metadata, targetId) {
+  if (!metadata) return null;
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value?.id === targetId) {
+      return value.value;
+    }
+  }
+
+  return null;
 }
 
 async function runCheck() {
@@ -84,10 +100,11 @@ async function runCheck() {
   let notificationsSent = 0;
 
   for (const asset of assets) {
-    const organicExpiry = asset.metadata?.[ORGANIC_KEY];
-    const paidExpiry = asset.metadata?.[PAID_KEY];
-
+    const metadata = asset.metadata;
     const name = asset.mediaName || asset.originalFilename || asset.id;
+
+    const organicExpiry = getExpiryFromMetadata(metadata, ORGANIC_EXPIRY_ID);
+    const paidExpiry = getExpiryFromMetadata(metadata, PAID_EXPIRY_ID);
 
     if (isWithinWindow(organicExpiry, 'Organic')) {
       console.log(`📢 Organic expiry found for "${name}" on ${organicExpiry}`);
@@ -95,7 +112,7 @@ async function runCheck() {
       notificationsSent++;
     }
 
-   if (isWithinWindow(paidExpiry, 'Paid')) {
+    if (isWithinWindow(paidExpiry, 'Paid')) {
       console.log(`📢 Paid expiry found for "${name}" on ${paidExpiry}`);
       await notifySlack(asset, 'paid', paidExpiry);
       notificationsSent++;
