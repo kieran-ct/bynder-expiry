@@ -4,12 +4,7 @@ require('dotenv').config();
 const BYNDER_TOKEN = process.env.BYNDER_TOKEN;
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 const BYNDER_BASE_URL = process.env.BYNDER_BASE_URL;
-
 const ALERT_WINDOW_DAYS = 7;
-
-// Metadata IDs for expiry fields
-const ORGANIC_EXPIRY_ID = '6375B2CD-C349-434D-8581770837D6214E';
-const PAID_EXPIRY_ID = '6C7C1AA3-17CC-41A3-9BA92788E9323FB9';
 
 function isWithinWindow(dateStr, label = '') {
   if (!dateStr) {
@@ -49,25 +44,38 @@ async function fetchAllAssets() {
       break;
     }
 
-    const data = await res.json();
-    all = all.concat(data);
+    const pageAssets = await res.json();
 
-    console.log(`📦 Page ${page}: fetched ${data.length} assets`);
-    if (data.length < perPage) break;
+    for (const asset of pageAssets) {
+      const detailRes = await fetch(`${BYNDER_BASE_URL}/api/v4/media/${asset.id}/`, {
+        headers: { Authorization: `Bearer ${BYNDER_TOKEN}` }
+      });
+
+      if (!detailRes.ok) {
+        console.warn(`⚠️ Could not fetch metadata for asset ${asset.id}:`, detailRes.status);
+        continue;
+      }
+
+      const fullAsset = await detailRes.json();
+      all.push(fullAsset);
+    }
+
+    console.log(`📦 Page ${page}: processed ${pageAssets.length} assets`);
+    if (pageAssets.length < perPage) break;
 
     page++;
   }
 
-  console.log(`✅ Total assets fetched: ${all.length}`);
+  console.log(`✅ Total fully loaded assets: ${all.length}`);
   return all;
 }
 
 async function notifySlack(asset, type, expiryDate) {
-  const assetName = asset.mediaName || asset.originalFilename || asset.id;
+  const assetName = asset.mediaName || asset.originalFilename || asset.name || asset.id;
   const assetUrl = `${BYNDER_BASE_URL}/media/${asset.id}`;
 
   const message = {
-    text: `:warning: *${assetName}* has a *${type} expiry* on *${expiryDate}*.\n<${assetUrl}|View asset>`
+    text: `:warning: *${assetName}* is expiring soon!\n• *Type:* ${type}\n• *Expiry:* ${expiryDate}\n<${assetUrl}|View asset>`
   };
 
   const res = await fetch(SLACK_WEBHOOK_URL, {
@@ -81,30 +89,22 @@ async function notifySlack(asset, type, expiryDate) {
   }
 }
 
-function getExpiryFromMetadata(metadata, targetId) {
-  if (!metadata) return null;
-
-  for (const [key, value] of Object.entries(metadata)) {
-    if (value?.id === targetId) {
-      return value.value;
-    }
-  }
-
-  return null;
-}
-
 async function runCheck() {
   const assets = await fetchAllAssets();
   console.log(`✅ Fetched ${assets.length} assets from Bynder`);
 
+  if (assets.length === 0) {
+    console.log("⚠️ No assets to review.");
+    return;
+  }
+
   let notificationsSent = 0;
 
   for (const asset of assets) {
-    const metadata = asset.metadata;
     const name = asset.mediaName || asset.originalFilename || asset.id;
 
-    const organicExpiry = getExpiryFromMetadata(metadata, ORGANIC_EXPIRY_ID);
-    const paidExpiry = getExpiryFromMetadata(metadata, PAID_EXPIRY_ID);
+    const organicExpiry = asset.property_Organic_expiry_date;
+    const paidExpiry = asset.property_Paid_expiry_date;
 
     if (isWithinWindow(organicExpiry, 'Organic')) {
       console.log(`📢 Organic expiry found for "${name}" on ${organicExpiry}`);

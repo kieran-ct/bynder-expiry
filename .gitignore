@@ -1,1 +1,9 @@
+# Dependency folder
+node_modules/
+
+# Env file with secrets
 .env
+
+# OS / editor clutter
+.DS_Store
+*.log
