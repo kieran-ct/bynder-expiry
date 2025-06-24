@@ -72,7 +72,7 @@ async function fetchAllAssets() {
 
 async function notifySlack(asset, type, expiryDate) {
   const assetName = asset.mediaName || asset.originalFilename || asset.name || asset.id;
-  const assetUrl = `${BYNDER_BASE_URL}/media/${asset.id}`;
+  const assetUrl = `${BYNDER_BASE_URL}/media/?mediaId=${asset.id}`;
 
   const message = {
     text: `:warning: *${assetName}* is expiring soon!\n• *Type:* ${type}\n• *Expiry:* ${expiryDate}\n<${assetUrl}|View asset>`
